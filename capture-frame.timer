@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart RTSP Capture Frame Service every 8 hours
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=8h
+Unit=capture-frame.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

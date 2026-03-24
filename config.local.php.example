@@ -1,0 +1,7 @@
+<?php
+
+return [
+    'rtsp_url' => 'rtsp://camera.local:554/stream1',
+    'telegram_bot_token' => 'put-your-bot-token-here',
+    'telegram_chat_id' => 'put-your-chat-id-here',
+];

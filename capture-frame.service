@@ -1,0 +1,13 @@
+[Unit]
+Description=RTSP Capture Frame Service
+After=network.target redis.service
+Wants=network.target redis.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/php /srv/http/parking.napaster.ru/service.php
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
