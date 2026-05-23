@@ -64,6 +64,23 @@ function startRecording()
     logMessage('ffmpeg recording started.');
 }
 
+function stopRecording()
+{
+    global $config;
+
+    if (!file_exists($config['pid_file'])) {
+        return;
+    }
+
+    $pid = (int) file_get_contents($config['pid_file']);
+    if ($pid > 0 && posix_kill($pid, 0)) {
+        posix_kill($pid, SIGTERM);
+        logMessage("ffmpeg recording stopped for PID {$pid}.");
+    }
+
+    @unlink($config['pid_file']);
+}
+
 function checkRecording()
 {
     global $config;
@@ -95,6 +112,51 @@ function cleanupOldVideos()
             logMessage('Deleted old video: ' . basename($file));
         }
     }
+}
+
+function getLatestVideoTimestamp($storagePath)
+{
+    $files = glob($storagePath . '/*.mp4');
+    if ($files === false || $files === []) {
+        return null;
+    }
+
+    $latestTimestamp = null;
+    foreach ($files as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+
+        $fileTimestamp = filemtime($file);
+        if ($fileTimestamp === false) {
+            continue;
+        }
+
+        if ($latestTimestamp === null || $fileTimestamp > $latestTimestamp) {
+            $latestTimestamp = $fileTimestamp;
+        }
+    }
+
+    return $latestTimestamp;
+}
+
+function isRecordingFresh($storagePath, $staleThreshold, $pidFile, $startupGraceSeconds)
+{
+    $latestTimestamp = getLatestVideoTimestamp($storagePath);
+    if ($latestTimestamp === null) {
+        if (!file_exists($pidFile)) {
+            return false;
+        }
+
+        $pidFileTimestamp = filemtime($pidFile);
+        if ($pidFileTimestamp === false) {
+            return false;
+        }
+
+        return (time() - $pidFileTimestamp) <= $startupGraceSeconds;
+    }
+
+    return (time() - $latestTimestamp) <= $staleThreshold;
 }
 
 function isFrameFresh(Redis $redis, $frameUpdatedAtKey, $staleFrameThreshold)
@@ -204,6 +266,23 @@ while (true) {
             $redis,
             'recording_restarted',
             'Camera recording process was restarted.',
+            $config['telegram_cooldown_seconds']
+        );
+    }
+
+    if (checkRecording() && !isRecordingFresh(
+        $config['storage_path'],
+        $config['recording_stale_threshold'],
+        $config['pid_file'],
+        $config['recording_startup_grace_seconds']
+    )) {
+        logMessage('Recording process is alive, but video files are not updating.');
+        stopRecording();
+        startRecording();
+        notifyWithThrottle(
+            $redis,
+            'recording_stale',
+            'Camera recording may be stuck: ffmpeg is running, but the archive files are not updating. Recording was restarted.',
             $config['telegram_cooldown_seconds']
         );
     }
